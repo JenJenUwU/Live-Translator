@@ -1,65 +1,27 @@
-from model import model_init
-import os
-import numpy as np
+import threading
 import soundcard as sc
-import soundfile as sf
+import numpy as np
+from model import model_init
+from record import update_data, save_audio
+from transcribe import transcribe_chunk
 
-# Run on GPU with FP16
-model = model_init()
 
-# or run on GPU with INT8
-# model = WhisperModel(model_size, device="cuda", compute_type="int8_float16")
-# or run on CPU with INT8
-# model = WhisperModel(model_size, device="cpu", compute_type="int8")
+def main(source, model, sample_rate=48000, seconds=10, transcribe_delay=1, update_delay=0.1):
+    buffer = np.zeros((sample_rate * seconds, 2))
+    update_thread = threading.Thread(target=update_data, args=(source, buffer, sample_rate, update_delay, seconds))
+    save_thread = threading.Thread(target=save_audio, args=(buffer, sample_rate))
+    transcribe_thread = threading.Thread(target=transcribe_chunk, args=(model, transcribe_delay))
 
-OUTPUT = "output/temp.wav"
-SAMPLE_RATE = 48000
-CHUNK_DURATION = 0.2  # Recording chunk duration in seconds
-MINIMUM_CHUNK_LENGTH = 2  # Minimum length of a recorded section in seconds
-BLOCKSIZE = 8192  # Recommended block size
-# Note: 8192 seems to work well as an alternative block size
-SILENCE_THRESHOLD_DB = -40  # Threshold for detecting silence, based on observed volume
+    update_thread.start()
+    save_thread.start()
+    transcribe_thread.start()
 
-# Ensure the output directory exists
-os.makedirs("output", exist_ok=True)
+    update_thread.join()
+    save_thread.join()
+    transcribe_thread.join()
 
-# Get the microphone with loopback enabled
+print("Initializing...")
 mic = sc.get_microphone(id=str(sc.default_speaker().name), include_loopback=True)
-
-try:
-    with mic.recorder(samplerate=SAMPLE_RATE, blocksize=BLOCKSIZE) as source:
-        print("Program Initialized")
-        recording_buffer = []  # Buffer to store audio data
-        while True:
-            # Record a short chunk of audio
-            data = source.record(numframes=int(CHUNK_DURATION * SAMPLE_RATE))
-
-            # Calculate the volume in decibels
-            rms = np.sqrt(np.mean(data**2))
-            volume_db = 20 * np.log10(rms + 1e-6)  # Convert amplitude to decibels
-
-            # Check if the volume is below the silence threshold
-            if volume_db < SILENCE_THRESHOLD_DB:
-                if recording_buffer:
-                    # Save the recorded audio buffer if it meets the minimum length requirement
-                    total_buffer_duration = len(recording_buffer) * CHUNK_DURATION
-                    if total_buffer_duration >= MINIMUM_CHUNK_LENGTH:
-                        sentence_data = np.concatenate(recording_buffer, axis=0)
-                        sf.write(file=OUTPUT, data=sentence_data[:, 0], samplerate=SAMPLE_RATE)
-                        segments, info = model.transcribe(OUTPUT, beam_size=5)
-                        for segment in segments:
-                            print(segment.text)
-                    recording_buffer = []
-            else:
-                # Add the chunk to the buffer
-                recording_buffer.append(data)
-                in_silence = False
-
-except KeyboardInterrupt:
-    print("\nRecording stopped.")
-    # Save any remaining audio in the buffer if it meets the minimum length requirement
-    if recording_buffer:
-        total_buffer_duration = len(recording_buffer) * CHUNK_DURATION
-        if total_buffer_duration >= MINIMUM_CHUNK_LENGTH:
-            sentence_data = np.concatenate(recording_buffer, axis=0)
-            sf.write(file=OUTPUT, data=sentence_data[:, 0], samplerate=SAMPLE_RATE)
+whisper_model = model_init()
+print("Initialization complete.")
+main(mic, whisper_model)
