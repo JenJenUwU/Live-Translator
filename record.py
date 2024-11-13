@@ -10,8 +10,8 @@ def update_data(source, buffer, sample_rate, update_seconds, total_seconds):
             updated_buffer = np.concatenate((buffer, new_data), axis=0)
             buffer[:] = updated_buffer[-(int(sample_rate * total_seconds)):]  # Update buffer in place
 
-def save_audio(buffer, sample_rate, delay=1):
+def save_audio(buffer, sample_rate, target_filename, delay=1):
     while True:
+        sf.write(file=target_filename, data=buffer, samplerate=sample_rate)
         time.sleep(delay)
-        sf.write(file="output/temp.wav", data=buffer, samplerate=sample_rate)
 
