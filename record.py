@@ -1,6 +1,4 @@
-import soundfile as sf
 import numpy as np
-import time
 
 
 def update_data(source, buffer, sample_rate, update_seconds):
