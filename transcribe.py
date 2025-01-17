@@ -1,8 +1,8 @@
 import time
 import numpy as np
 
-def transcribe_chunk(model, buffer, translator, translate_to, delay):
-    while True:
+def transcribe_chunk(model, buffer, translator, translate_to, delay, stop_event):
+    while not stop_event.is_set():
         print('\033[1A', end='\x1b[2K')
         print('\033[1A', end='\x1b[2K')
         time.sleep(delay)
